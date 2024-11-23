@@ -88,11 +88,6 @@ editor["nvim-pack/nvim-spectre"] = {
 	lazy = true,
 	cmd = "Spectre",
 }
-editor["mrjones2014/smart-splits.nvim"] = {
-	lazy = true,
-	event = { "CursorHoldI", "CursorHold" },
-	config = require("editor.splits"),
-}
 
 ----------------------------------------------------------------------
 --                  :treesitter related plugins                    --
@@ -100,7 +95,7 @@ editor["mrjones2014/smart-splits.nvim"] = {
 editor["nvim-treesitter/nvim-treesitter"] = {
 	lazy = true,
 	build = function()
-		if vim.fn.has("gui_running") == 1 then
+		if #vim.api.nvim_list_uis() > 0 then
 			vim.api.nvim_command([[TSUpdate]])
 		end
 	end,
