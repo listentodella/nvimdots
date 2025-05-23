@@ -29,7 +29,7 @@ local M = {}
 ---@field crust string
 ---@field none "NONE"
 
----@type nil|table
+---@type nil|palette
 local palette = nil
 
 -- Indicates if autocmd for refreshing the builtin palette has already been registered
@@ -56,43 +56,38 @@ local function init_palette()
 		})
 	end
 
-	local fallback_palette = {
-		rosewater = "#DC8A78",
-		flamingo = "#DD7878",
-		mauve = "#CBA6F7",
-		pink = "#F5C2E7",
-		red = "#E95678",
-		maroon = "#B33076",
-		peach = "#FF8700",
-		yellow = "#F7BB3B",
-		green = "#AFD700",
-		sapphire = "#36D0E0",
-		blue = "#61AFEF",
-		sky = "#04A5E5",
-		teal = "#B5E8E0",
-		lavender = "#7287FD",
-
-		text = "#F2F2BF",
-		subtext1 = "#BAC2DE",
-		subtext0 = "#A6ADC8",
-		overlay2 = "#C3BAC6",
-		overlay1 = "#988BA2",
-		overlay0 = "#6E6B6B",
-		surface2 = "#6E6C7E",
-		surface1 = "#575268",
-		surface0 = "#302D41",
-
-		base = "#1D1536",
-		mantle = "#1C1C19",
-		crust = "#161320",
-	}
-
 	if not palette then
-		if vim.g.colors_name == nil or (vim.g.colors_name ~= nil and not vim.g.colors_name:find("catppuccin")) then
-			palette = fallback_palette
-		else
-			palette = require("catppuccin.palettes").get_palette()
-		end
+		palette = (vim.g.colors_name or ""):find("catppuccin") and require("catppuccin.palettes").get_palette()
+			or {
+				rosewater = "#DC8A78",
+				flamingo = "#DD7878",
+				mauve = "#CBA6F7",
+				pink = "#F5C2E7",
+				red = "#E95678",
+				maroon = "#B33076",
+				peach = "#FF8700",
+				yellow = "#F7BB3B",
+				green = "#AFD700",
+				sapphire = "#36D0E0",
+				blue = "#61AFEF",
+				sky = "#04A5E5",
+				teal = "#B5E8E0",
+				lavender = "#7287FD",
+
+				text = "#F2F2BF",
+				subtext1 = "#BAC2DE",
+				subtext0 = "#A6ADC8",
+				overlay2 = "#C3BAC6",
+				overlay1 = "#988BA2",
+				overlay0 = "#6E6B6B",
+				surface2 = "#6E6C7E",
+				surface1 = "#575268",
+				surface0 = "#302D41",
+
+				base = "#1D1536",
+				mantle = "#1C1C19",
+				crust = "#161320",
+			}
 
 		palette = vim.tbl_extend("force", { none = "NONE" }, palette, require("core.settings").palette_overwrite)
 	end
@@ -109,7 +104,7 @@ end
 -- NOTE: If the active colorscheme isn't `catppuccin`, this function won't overwrite existing definitions
 ---Sets a global highlight group.
 ---@param name string @Highlight group name, e.g. "ErrorMsg"
----@param foreground string @The foreground color
+---@param foreground? string @The foreground color
 ---@param background? string @The background color
 ---@param italic? boolean
 local function set_global_hl(name, foreground, background, italic)
@@ -138,6 +133,24 @@ function M.blend(foreground, background, alpha)
 	return string.format("#%02x%02x%02x", blend_channel(1), blend_channel(2), blend_channel(3))
 end
 
+---Darken a color by blending it with the background color.
+---@param hex string @The color in hex to darken
+---@param amount number @The amount to darken the color
+---@param bg string @The background color to blend with
+---@return string @The darkened color as a hex string
+function M.darken(hex, amount, bg)
+	return M.blend(hex, bg or "#000000", math.abs(amount))
+end
+
+---Lighten a color by blending it with the foreground color.
+---@param hex string @The color in hex to lighten
+---@param amount number @The amount to lighten the color
+---@param fg string @The foreground color to blend with
+---@return string @The lightened color as a hex string
+function M.lighten(hex, amount, fg)
+	return M.blend(hex, fg or "#FFFFFF", math.abs(amount))
+end
+
 ---Get RGB highlight by highlight group
 ---@param hl_group string @Highlight group name
 ---@param use_bg boolean @Returns background or not
@@ -148,10 +161,7 @@ function M.hl_to_rgb(hl_group, use_bg, fallback_hl)
 	local hlexists = pcall(vim.api.nvim_get_hl, 0, { name = hl_group, link = false })
 
 	if hlexists then
-		-- FIXME: Investigate why hl-StatusLine is undefined in toggleterm and remove this workaround
-		-- (@Jint-lzxy)
-		local link = vim.bo.filetype == "toggleterm"
-		local result = vim.api.nvim_get_hl(0, { name = hl_group, link = link })
+		local result = vim.api.nvim_get_hl(0, { name = hl_group, link = false })
 		if use_bg then
 			hex = result.bg and string.format("#%06x", result.bg) or "NONE"
 		else
@@ -174,6 +184,7 @@ function M.extend_hl(name, def)
 	local current_def = vim.api.nvim_get_hl(0, { name = name, link = false })
 	local combined_def = vim.tbl_deep_extend("force", current_def, def)
 
+	---@diagnostic disable-next-line: param-type-mismatch
 	vim.api.nvim_set_hl(0, name, combined_def)
 end
 
@@ -241,6 +252,15 @@ function M.gen_alpha_hl()
 	set_global_hl("AlphaButtons", colors.green)
 	set_global_hl("AlphaShortcut", colors.pink, nil, true)
 	set_global_hl("AlphaFooter", colors.yellow)
+end
+
+-- Generate highlight groups for cursorword. Existing attributes will NOT be overwritten
+function M.gen_cursorword_hl()
+	local colors = M.get_palette()
+
+	-- Do not highlight `MiniCursorwordCurrent`
+	set_global_hl("MiniCursorword", nil, M.darken(colors.surface1, 0.7, colors.base))
+	set_global_hl("MiniCursorwordCurrent", nil)
 end
 
 ---Convert number (0/1) to boolean
